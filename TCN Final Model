@@ -1,0 +1,106 @@
+# In this file we are creating and fitting a TCN
+
+from utils import *
+
+# tensorflow stuff - note to speed up the training for this model the GPU optimised version of Tensorflow has been used
+
+import tensorflow as tf
+from keras.layers import Dense, Input, BatchNormalisation, SpatialDropout1D, Convolution1D, GlobalMaxPooling, Activation
+from keras import regularizers
+from tensorflow.keras.optimizers import Adam
+
+# dictating some parameters
+
+nb_filters = 64
+kernel_size = 3
+padding = 'causal'
+dropout_rate = 0.1
+
+# the full model manually created. I have swapped dilation for strides, as we are creating a point estimation, it works exactly the same way, 
+but avoids having to fun convolutions over the whole network for them just not to be used.
+
+inp = Input(shape=(243, 20))
+
+# initial layer
+x = Convolution1D(nb_filters, 1,  padding=padding, name='initial_conv_layer')(inp)
+
+# now we need 5 residual blocks 
+
+# Block 1
+
+conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_1')(x)
+x = Activation('relu')(conv)
+x = BatchNormalization()(x)    
+x = SpatialDropout1D(dropout_rate)(x)
+x = Convolution1D(nb_filters, 1, padding='same')(x)
+
+# Block 2
+
+conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_2')(x)
+x = Activation('relu')(conv)
+x = BatchNormalization()(x)    
+x = SpatialDropout1D(dropout_rate)(x)
+x = Convolution1D(nb_filters, 1, padding='same')(x)
+
+# Block 3
+
+conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_3')(x)
+x = Activation('relu')(conv)
+x = BatchNormalization()(x)    
+x = SpatialDropout1D(dropout_rate)(x)
+x = Convolution1D(nb_filters, 1, padding='same')(x)
+
+# Block 4
+
+conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_4')(x)
+x = Activation('relu')(conv)
+x = BatchNormalization()(x)    
+x = SpatialDropout1D(dropout_rate)(x)
+x = Convolution1D(nb_filters, 1, padding='same')(x)
+
+# Block 5
+
+conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_5')(x)
+x = Activation('relu')(conv)
+x = BatchNormalization()(x)    
+x = SpatialDropout1D(dropout_rate)(x)
+x = Convolution1D(nb_filters, 1, padding='same')(x)
+
+# pass it through one final relu activation function
+x = Activation('relu')(x)
+
+# due to the use of strides, this is not really needed except to remove a dimension
+conc = GlobalMaxPooling1D()(x)
+
+# now we can do our pooling
+conc = Dense(16, activation="relu", kernel_regularizer=tf.keras.regularizers.L1(l1=0.000724))(conc)
+conc = Dropout(0.1)(conc)
+outp = Dense(1, activation="relu")(conc)
+
+# code to run the above 
+
+
+filenames = ['N-CMAPSS_DS01.h5', 'N-CMAPSS_DS02.h5' , 'N-CMAPSS_DS03-012.h5', 'N-CMAPSS_DS04.h5', 'N-CMAPSS_DS05.h5', 'N-CMAPSS_DS06.h5', 'N-CMAPSS_DS07.h5', 'N-CMAPSS_DS08a-009.h5', 'N-CMAPSS_DS08c-008.h5']
+
+# Due to memory limitations I had tl run the following on my CPU, before training the model on my GPU
+
+with tf.device('/CPU:0'):
+    X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units = loading_all_data(filenames)
+
+    training_ds = temporaliser(X_train_scaled, Y_dev, train_units, 243)
+    test_ds = temporaliser(X_test_scaled, Y_test, test_units, 243)
+
+# I was then able to run the below on my GPU
+
+with tf.device('/GPU:0'):
+
+    training = training_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
+    test = test_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
+    
+    history = model.fit(training, validation_data=(test), epochs=3)
+    
+ # plotting our loss graph
+ plot_loss(history, 'Final TCN Model')
+ 
+ # Evaluating the final models RMSE score
+ evaluate(Y_test, model.predict(X_test_scaled))
