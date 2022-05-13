@@ -87,3 +87,85 @@ def loading_all_data(filenames):
     print("Data Scaling and Preprocessing Complete")
     
     return X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units
+
+
+import tensorflow as tf
+
+# time window creation function
+def temporaliser(X, y, units, time_window):
+    
+    engines = units[0].unique()
+    
+    first_engine_index = units[units[0]==engines[1]].index
+
+    start = first_engine_index.min()
+    end = first_engine_index.max() + 1
+
+    # This is to allow us to line up the y variables with the time windows
+    w = time_window - 1
+    
+    # this looks messy but we need to convert the dataframes into tensorflow arrays 
+    
+    first_X_dataset = tf.data.Dataset.from_tensor_slices(X[start:end, :])
+    first_y_dataset = tf.data.Dataset.from_tensor_slices(y[start:end, :])
+    
+    first_temporalised = first_X_dataset.window(time_window, shift=1, drop_remainder=True)
+    
+    first_batched = first_temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
+    
+    #y_tf = first_y_dataset
+    
+    full_combined_temporalised = tf.data.Dataset.zip((first_batched, first_y_dataset))
+    
+    # Now we can run the rest of the engines in a for loop and then concatenate them with the first engine 
+    
+    for engs in engines[1:]:
+    
+        engine_index = units[units[0]==engs].index
+
+        start = engine_index.min()
+        end = engine_index.max() + 1
+        
+        X_tf_array = tf.convert_to_tensor(X[start:end, :])
+        y_tf_array = tf.convert_to_tensor(y[start:end, :])
+
+        X_dataset = tf.data.Dataset.from_tensor_slices(X_tf_array)
+        y_dataset = tf.data.Dataset.from_tensor_slices(y_tf_array)
+    
+        temporalised = X_dataset.window(time_window, shift=1, drop_remainder=True)
+    
+        batched = temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
+        
+        combined_temporalised = tf.data.Dataset.zip((batched, y_dataset))
+    
+        full_combined_temporalised = full_combined_temporalised.concatenate(combined_temporalised)
+    
+    return full_combined_temporalised
+
+
+
+
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+%matplotlib inline
+
+# plot loss visualisation function
+def plot_loss(fit_history, name):
+    plt.figure(figsize=(13,5))
+    plt.plot(range(1, len(fit_history.history['loss'])+1), fit_history.history['loss'], label='train')
+    plt.plot(range(1, len(fit_history.history['val_loss'])+1), fit_history.history['val_loss'], label='validate')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.savefig(name)
+    plt.show()
+    
+    
+from sklearn.metrics import mean_squared_error, r2_score
+
+# RMSE evaluation functoin
+def evaluate(y_true, y_hat, label='test'):
+    mse = mean_squared_error(y_true, y_hat)
+    rmse = np.sqrt(mse)
+    variance = r2_score(y_true, y_hat)
+    print('{} set RMSE:{}, R2:{}'.format(label, rmse, variance))
