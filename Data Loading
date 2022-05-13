@@ -1,0 +1,89 @@
+# This file contains all of the code for loading in the data
+
+import numpy as np
+import h5py
+from sklearn import StandardScaler
+
+
+def loading_all_data(filenames):
+
+    # for the first dataset
+    
+    # I want to stick these into tensors 
+    
+    with h5py.File(filenames[0], 'r') as hdf:
+        
+        # Development set
+        W_dev = np.array(hdf.get('W_dev')).astype(np.float32)             # W
+        X_s_dev = np.array(hdf.get('X_s_dev')).astype(np.float32)         # X_s
+        Y_dev = np.array(hdf.get('Y_dev')).astype(np.float32)
+        A_dev = np.array(hdf.get('A_dev')).astype(np.float32)  
+        A_dev = np.delete(A_dev, 1, 1)
+
+        # Test set
+        W_test = np.array(hdf.get('W_test')).astype(np.float32)           # W
+        X_s_test = np.array(hdf.get('X_s_test')).astype(np.float32)       # X_s
+        Y_test = np.array(hdf.get('Y_test')).astype(np.float32)           # RUL  
+        A_test = np.array(hdf.get('A_test')).astype(np.float32)           # Auxiliary
+        A_test = np.delete(A_test, 1, 1)
+    
+    print("N-CMAPSS_DS01.h5 Dataset Loaded")
+    num = 50
+    
+    for file in filenames[1:]: 
+    
+        # Load data
+        with h5py.File(file, 'r') as hdf:
+            
+            # Development set
+            W_dev = np.concatenate((W_dev, np.array(hdf.get('W_dev')).astype(np.float32)), axis=0)             # W
+            X_s_dev = np.concatenate((X_s_dev, np.array(hdf.get('X_s_dev')).astype(np.float32)), axis=0)         # X_s
+            Y_dev = np.concatenate((Y_dev, np.array(hdf.get('Y_dev')).astype(np.float32)), axis=0)             # RUL  
+            
+            Aux_raw = np.array(hdf.get('A_dev')).astype(np.float32)
+            Aux_raw[:, 0] = Aux_raw[:, 0] + num
+            Aux_raw = np.delete(Aux_raw, 1, 1)
+            A_dev = np.concatenate((A_dev, Aux_raw), axis=0)    # Auxiliary
+            
+            # Test set
+            W_test = np.concatenate((W_test, np.array(hdf.get('W_test')).astype(np.float32)), axis=0)           # W
+            X_s_test = np.concatenate((X_s_test, np.array(hdf.get('X_s_test')).astype(np.float32)), axis=0)       # X_s
+            Y_test = np.concatenate((Y_test, np.array(hdf.get('Y_test')).astype(np.float32)), axis=0)           # RUL  
+            
+            Aux_raw_test = np.array(hdf.get('A_test')).astype(np.float32)
+            Aux_raw_test[:, 0] = Aux_raw_test[:, 0] + num           
+            Aux_raw_test = np.delete(Aux_raw_test, 1, 1)
+            
+            A_test = np.concatenate((A_test, Aux_raw_test), axis=0)                           # Auxiliary
+
+            
+        num += 50
+        print(file, ' dataset loaded')
+        
+    # pulling out the unit numbers before scaling 
+    
+    train_units = pd.DataFrame(A_dev[:, 0].reshape(-1,1))
+    test_units = pd.DataFrame(A_test[:, 0].reshape(-1,1))
+    
+    # Combining the arrays 
+    
+    X_train = np.concatenate((W_dev, X_s_dev, A_dev[:, 1:]), axis=1)
+    X_test = np.concatenate((W_test, X_s_test, A_test[:, 1:]), axis=1)
+    
+    
+    print('Finished loading datasets')
+    print('X_train Shape: ', X_train.shape)
+    print('X_test Shape:' , X_test.shape)
+    
+    # scaling 
+    
+    standard_scaler = StandardScaler()
+    
+    X_train_scaled = np.around(standard_scaler.fit_transform(X_train), 2)
+    X_test_scaled = np.around(standard_scaler.transform(X_test), 2)
+    
+    # producing final dataframes, not sure if I need these to be dataframes? It will slow everything down a lot 
+    
+    print("Data Scaling and Preprocessing Complete")
+    
+    return X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units
