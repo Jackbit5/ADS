@@ -1,0 +1,49 @@
+# pulling in our data loading function
+
+from utils import loading_all_data, plot_loss, evaluate
+
+
+# importing other necessary libraries
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+# tensorflow stuff
+
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras import regularizers
+from tensorflow.keras.optimizers import Adam
+
+# Setting up baseline our sequential model 
+
+model = Sequential()
+model.add(Dense(32, input_dim=20, activation='relu', kernel_regularizer=tf.keras.regularizers.L1(l1=0.001)))
+model.add(Dropout(0.1))
+model.add(Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.L1(l1=0.001)))
+model.add(Dropout(0.1))
+model.add(Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.L1(l1=0.001)))
+model.add(Dropout(0.1))
+model.add(Dense(1))
+
+opt = Adam(lr = 0.001)
+
+model.compile(loss='mean_squared_error', optimizer=opt)
+
+# loading our data (currently this will need to sit in the same directory as the files, otherwise the path will need to be updated
+filenames = ['N-CMAPSS_DS01.h5', 'N-CMAPSS_DS02.h5' , 'N-CMAPSS_DS03-012.h5', 'N-CMAPSS_DS04.h5', 'N-CMAPSS_DS05.h5', 'N-CMAPSS_DS06.h5', 'N-CMAPSS_DS07.h5', 'N-CMAPSS_DS08a-009.h5', 'N-CMAPSS_DS08c-008.h5']
+
+X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units = loading_all_data(filenames)
+
+# running our model
+history = model.fit(X_train_scaled, Y_dev, validation_data=(X_test_scaled, Y_test), epochs=10)
+
+# plotting our training loss
+plot_loss(history, 'Baseline Model')
+
+#producing our final RMSE score
+
+evaluate(Y_test, model.predict(X_test_scaled))
+
+
