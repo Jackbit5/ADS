@@ -1,5 +1,12 @@
 # In this file we are creating and fitting a TCN
 
+import numpy as np
+import h5py
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+%matplotlib inline
+from sklearn import StandardScaler
+
 from utils import *
 
 # tensorflow stuff - note to speed up the training for this model the GPU optimised version of Tensorflow has been used
