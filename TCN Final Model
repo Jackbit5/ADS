@@ -11,7 +11,7 @@ from tensorflow.keras.optimizers import Adam
 
 # dictating some parameters
 
-nb_filters = 64
+nb_filters = 128
 kernel_size = 3
 padding = 'causal'
 dropout_rate = 0.1
