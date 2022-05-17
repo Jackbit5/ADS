@@ -1,5 +1,14 @@
 from utils import *
 
+# basic packages 
+
+import numpy as np
+import h5py
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+%matplotlib inline
+from sklearn import StandardScaler
+
 # tensorflow stuff
 
 import tensorflow as tf
@@ -102,7 +111,11 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
 
 filenames = ['N-CMAPSS_DS01.h5', 'N-CMAPSS_DS03-012.h5']
 
+# this is our loading in function, creating our train test split, which is already scaled
+
 X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units = loading_all_data(filenames)
+
+# this function converts the datasets to a tensorflow dataset object and produces the time windows
 
 training_ds_243 = temporaliser(X_train_scaled, Y_dev, train_units, 243)
 test_ds_243 = temporaliser(X_test_scaled, Y_test, test_units, 243)
@@ -112,7 +125,7 @@ test = test_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
     
 model = KerasClassifier(build_fn = create_model, verbose=1)
 
-# Define the parameters to try out - you need to add a bunch more here
+# Defining the paramters to be optimised over
 cv = KFold(n_splits=5)
 
 params = {'nb_filters' = [64, 128],
@@ -131,7 +144,3 @@ random_search.fit(input_X_train, output_Y_train)
 # summarize result
 print('Best Score: %s' % random_search.best_score_)
 print('Best Hyperparameters: %s' % random_search.best_params_)
-
-data = pd.DataFrame(random_search.cv_results_)
-
-data.to_csv('Results.csv')
