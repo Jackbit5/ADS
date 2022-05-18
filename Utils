@@ -4,12 +4,9 @@ import numpy as np
 import h5py
 from sklearn import StandardScaler
 
+# function for loading in the datasets with the h5py file types
 
 def loading_all_data(filenames):
-
-    # for the first dataset
-    
-    # I want to stick these into tensors 
     
     with h5py.File(filenames[0], 'r') as hdf:
         
@@ -82,8 +79,6 @@ def loading_all_data(filenames):
     X_train_scaled = np.around(standard_scaler.fit_transform(X_train), 2)
     X_test_scaled = np.around(standard_scaler.transform(X_test), 2)
     
-    # producing final dataframes, not sure if I need these to be dataframes? It will slow everything down a lot 
-    
     print("Data Scaling and Preprocessing Complete")
     
     return X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units
@@ -104,7 +99,7 @@ def temporaliser(X, y, units, time_window):
     # This is to allow us to line up the y variables with the time windows
     w = time_window - 1
     
-    # this looks messy but we need to convert the dataframes into tensorflow arrays 
+    # converting the numpy arrays to tf datasets
     
     first_X_dataset = tf.data.Dataset.from_tensor_slices(X[start:end, :])
     first_y_dataset = tf.data.Dataset.from_tensor_slices(y[start:end, :])
@@ -142,14 +137,10 @@ def temporaliser(X, y, units, time_window):
     
     return full_combined_temporalised
 
-
-
-
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
-%matplotlib inline
 
 # plot loss visualisation function
+
 def plot_loss(fit_history, name):
     plt.figure(figsize=(13,5))
     plt.plot(range(1, len(fit_history.history['loss'])+1), fit_history.history['loss'], label='train')
@@ -163,7 +154,8 @@ def plot_loss(fit_history, name):
     
 from sklearn.metrics import mean_squared_error, r2_score
 
-# RMSE evaluation functoin
+# RMSE evaluation function
+
 def evaluate(y_true, y_hat, label='test'):
     mse = mean_squared_error(y_true, y_hat)
     rmse = np.sqrt(mse)

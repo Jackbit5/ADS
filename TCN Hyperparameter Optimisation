@@ -1,19 +1,185 @@
-from utils import *
+#from utils import *
+
+# This file contains all of the code for loading in the data
+
+import numpy as np
+import pandas as pd
+import h5py
+from sklearn import StandardScaler
+
+# function for loading in the datasets with the h5py file types
+
+def loading_all_data(filenames):
+    
+    with h5py.File(filenames[0], 'r') as hdf:
+        
+        # Development set
+        W_dev = np.array(hdf.get('W_dev')).astype(np.float32)             # W
+        X_s_dev = np.array(hdf.get('X_s_dev')).astype(np.float32)         # X_s
+        Y_dev = np.array(hdf.get('Y_dev')).astype(np.float32)
+        A_dev = np.array(hdf.get('A_dev')).astype(np.float32)  
+        A_dev = np.delete(A_dev, 1, 1)
+
+        # Test set
+        W_test = np.array(hdf.get('W_test')).astype(np.float32)           # W
+        X_s_test = np.array(hdf.get('X_s_test')).astype(np.float32)       # X_s
+        Y_test = np.array(hdf.get('Y_test')).astype(np.float32)           # RUL  
+        A_test = np.array(hdf.get('A_test')).astype(np.float32)           # Auxiliary
+        A_test = np.delete(A_test, 1, 1)
+    
+    print("N-CMAPSS_DS01.h5 Dataset Loaded")
+    num = 50
+    
+    for file in filenames[1:]: 
+    
+        # Load data
+        with h5py.File(file, 'r') as hdf:
+            
+            # Development set
+            W_dev = np.concatenate((W_dev, np.array(hdf.get('W_dev')).astype(np.float32)), axis=0)             # W
+            X_s_dev = np.concatenate((X_s_dev, np.array(hdf.get('X_s_dev')).astype(np.float32)), axis=0)         # X_s
+            Y_dev = np.concatenate((Y_dev, np.array(hdf.get('Y_dev')).astype(np.float32)), axis=0)             # RUL  
+            
+            Aux_raw = np.array(hdf.get('A_dev')).astype(np.float32)
+            Aux_raw[:, 0] = Aux_raw[:, 0] + num
+            Aux_raw = np.delete(Aux_raw, 1, 1)
+            A_dev = np.concatenate((A_dev, Aux_raw), axis=0)    # Auxiliary
+            
+            # Test set
+            W_test = np.concatenate((W_test, np.array(hdf.get('W_test')).astype(np.float32)), axis=0)           # W
+            X_s_test = np.concatenate((X_s_test, np.array(hdf.get('X_s_test')).astype(np.float32)), axis=0)       # X_s
+            Y_test = np.concatenate((Y_test, np.array(hdf.get('Y_test')).astype(np.float32)), axis=0)           # RUL  
+            
+            Aux_raw_test = np.array(hdf.get('A_test')).astype(np.float32)
+            Aux_raw_test[:, 0] = Aux_raw_test[:, 0] + num           
+            Aux_raw_test = np.delete(Aux_raw_test, 1, 1)
+            
+            A_test = np.concatenate((A_test, Aux_raw_test), axis=0)                           # Auxiliary
+
+        num += 50
+        print(file, ' dataset loaded')
+        
+    # pulling out the unit numbers before scaling 
+    
+    train_units = pd.DataFrame(A_dev[:, 0].reshape(-1,1))
+    test_units = pd.DataFrame(A_test[:, 0].reshape(-1,1))
+    
+    # Combining the arrays 
+    
+    X_train = np.concatenate((W_dev, X_s_dev, A_dev[:, 1:]), axis=1)
+    X_test = np.concatenate((W_test, X_s_test, A_test[:, 1:]), axis=1)
+    
+    
+    print('Finished loading datasets')
+    print('X_train Shape: ', X_train.shape)
+    print('X_test Shape:' , X_test.shape)
+    
+    # scaling 
+    
+    standard_scaler = StandardScaler()
+    
+    X_train_scaled = np.around(standard_scaler.fit_transform(X_train), 2)
+    X_test_scaled = np.around(standard_scaler.transform(X_test), 2)
+    
+    print("Data Scaling and Preprocessing Complete")
+    
+    return X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units
+
+
+import tensorflow as tf
+
+# time window creation function
+def temporaliser(X, y, units, time_window):
+    
+    engines = units[0].unique()
+    
+    first_engine_index = units[units[0]==engines[1]].index
+
+    start = first_engine_index.min()
+    end = first_engine_index.max() + 1
+
+    # This is to allow us to line up the y variables with the time windows
+    w = time_window - 1
+    
+    # converting the numpy arrays to tf datasets
+    
+    first_X_dataset = tf.data.Dataset.from_tensor_slices(X[start:end, :])
+    first_y_dataset = tf.data.Dataset.from_tensor_slices(y[start:end, :])
+    
+    first_temporalised = first_X_dataset.window(time_window, shift=1, drop_remainder=True)
+    
+    first_batched = first_temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
+    
+    #y_tf = first_y_dataset
+    
+    full_combined_temporalised = tf.data.Dataset.zip((first_batched, first_y_dataset))
+    
+    # Now we can run the rest of the engines in a for loop and then concatenate them with the first engine 
+    
+    for engs in engines[1:]:
+    
+        engine_index = units[units[0]==engs].index
+
+        start = engine_index.min()
+        end = engine_index.max() + 1
+        
+        X_tf_array = tf.convert_to_tensor(X[start:end, :])
+        y_tf_array = tf.convert_to_tensor(y[start:end, :])
+
+        X_dataset = tf.data.Dataset.from_tensor_slices(X_tf_array)
+        y_dataset = tf.data.Dataset.from_tensor_slices(y_tf_array)
+    
+        temporalised = X_dataset.window(time_window, shift=1, drop_remainder=True)
+    
+        batched = temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
+        
+        combined_temporalised = tf.data.Dataset.zip((batched, y_dataset))
+    
+        full_combined_temporalised = full_combined_temporalised.concatenate(combined_temporalised)
+    
+    return full_combined_temporalised
+
+import matplotlib.pyplot as plt
+
+# plot loss visualisation function
+
+def plot_loss(fit_history, name):
+    plt.figure(figsize=(13,5))
+    plt.plot(range(1, len(fit_history.history['loss'])+1), fit_history.history['loss'], label='train')
+    plt.plot(range(1, len(fit_history.history['val_loss'])+1), fit_history.history['val_loss'], label='validate')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.savefig(name)
+    plt.show()
+    
+    
+from sklearn.metrics import mean_squared_error, r2_score
+
+# RMSE evaluation function
+
+def evaluate(y_true, y_hat, label='test'):
+    mse = mean_squared_error(y_true, y_hat)
+    rmse = np.sqrt(mse)
+    variance = r2_score(y_true, y_hat)
+    print('{} set RMSE:{}, R2:{}'.format(label, rmse, variance))
+
+
+########################################
 
 # basic packages 
 
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
-%matplotlib inline
 from sklearn import StandardScaler
 
 # tensorflow stuff
 
 import tensorflow as tf
-from keras.layers import Dense, Input, BatchNormalisation, SpatialDropout1D, Convolution1D, GlobalMaxPooling, Activation
+from keras.layers import Dense, Input, BatchNormalization, SpatialDropout1D, Convolution1D, GlobalMaxPooling1D, Activation, Dropout
 from keras import regularizers
+from keras import Model
 from tensorflow.keras.optimizers import Adam
 
 # imports needed for hyperparameter optimisation
@@ -23,12 +189,12 @@ from sklearn.model_selection import KFold
 
 # Creating our model wrapping function 
 
-def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size, neurons, learning_rate):
+def create_model(nb_filters, kernel_size, neurons, learning_rate, window_length, padding = 'causal', dropout_rate = 0.1):
 
     # the full model manually created. I have swapped dilation for strides, as we are creating a point estimation, it works exactly the same way, 
-    but avoids having to complete full convolutions over the whole network for them just not to be used.
+    # but avoids having to complete full convolutions over the whole network for them just not to be used.
 
-    inp = Input(shape=(243, 20))
+    inp = Input(shape=(window_length, 20))
 
     # initial layer
     x = Convolution1D(nb_filters, 1,  padding=padding, name='initial_conv_layer')(inp)
@@ -37,7 +203,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
 
     # Block 1
 
-    conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_1')(x)
+    conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_1')(x)
     x = Activation('relu')(conv)
     x = BatchNormalization()(x)    
     x = SpatialDropout1D(dropout_rate)(x)
@@ -45,7 +211,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
 
     # Block 2
 
-    conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_2')(x)
+    conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_2')(x)
     x = Activation('relu')(conv)
     x = BatchNormalization()(x)    
     x = SpatialDropout1D(dropout_rate)(x)
@@ -53,7 +219,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
 
     # Block 3
 
-    conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_3')(x)
+    conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_3')(x)
     x = Activation('relu')(conv)
     x = BatchNormalization()(x)    
     x = SpatialDropout1D(dropout_rate)(x)
@@ -61,7 +227,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
 
     # Block 4
 
-    conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_4')(x)
+    conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_4')(x)
     x = Activation('relu')(conv)
     x = BatchNormalization()(x)    
     x = SpatialDropout1D(dropout_rate)(x)
@@ -69,7 +235,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
 
     # Block 5
 
-    conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_5')(x)
+    conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_5')(x)
     x = Activation('relu')(conv)
     x = BatchNormalization()(x)    
     x = SpatialDropout1D(dropout_rate)(x)
@@ -78,7 +244,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
     # Block 6 - optional 
     
     if window_length > 244:
-      conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_d')(x)
+      conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_d')(x)
       x = Activation('relu')(conv)
       x = BatchNormalization()(x)    
       x = SpatialDropout1D(dropout_rate)(x)
@@ -91,7 +257,7 @@ def create_model(padding = 'causal', dropout_rate = 0.1, nb_filters, Kernel_size
     conc = GlobalMaxPooling1D()(x)
 
     # now we can do our pooling
-    conc = Dense(neaurons, activation="relu", kernel_regularizer=tf.keras.regularizers.L1(l1=0.000724))(conc)
+    conc = Dense(neurons, activation="relu", kernel_regularizer=tf.keras.regularizers.L1(l1=0.000724))(conc)
     conc = Dropout(0.1)(conc)
     outp = Dense(1, activation="relu")(conc)
 
@@ -120,21 +286,24 @@ X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units = loading_
 training_ds_243 = temporaliser(X_train_scaled, Y_dev, train_units, 243)
 test_ds_243 = temporaliser(X_test_scaled, Y_test, test_units, 243)
 
+training_ds_486 = temporaliser(X_train_scaled, Y_dev, train_units, 486)
+test_ds_486 = temporaliser(X_test_scaled, Y_test, test_units, 486)
+
 training = training_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
 test = test_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
     
 model = KerasClassifier(build_fn = create_model, verbose=1)
-
 # Defining the paramters to be optimised over
 cv = KFold(n_splits=5)
 
-params = {'nb_filters' = [64, 128],
+params = {'nb_filters' : [64, 128],
           'kernel_size': [2, 3],
           'batch_size': [32, 64, 128], 
           'neurons' : [16, 34],
           'learning_rate': [0.01, 0.001], 
           'padding':['same'], 
-          'epochs': [10]}
+          'epochs': [10],
+          'window_length' : [243, 486]}
 
 # Create a randomize search cv object passing in the parameters to try
 random_search = RandomizedSearchCV(model, param_distributions = params, cv = cv, n_iter=60)

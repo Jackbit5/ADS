@@ -3,8 +3,6 @@
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
-%matplotlib inline
 from sklearn import StandardScaler
 
 from utils import *
@@ -12,7 +10,7 @@ from utils import *
 # tensorflow stuff - note to speed up the training for this model the GPU optimised version of Tensorflow has been used
 
 import tensorflow as tf
-from keras.layers import Dense, Input, BatchNormalisation, SpatialDropout1D, Convolution1D, GlobalMaxPooling, Activation
+from keras.layers import Dense, Input, BatchNormalization, SpatialDropout1D, Convolution1D, GlobalMaxPooling1D, Activation
 from keras import regularizers
 from tensorflow.keras.optimizers import Adam
 
@@ -24,7 +22,7 @@ padding = 'causal'
 dropout_rate = 0.1
 
 # the full model manually created. I have swapped dilation for strides, as we are creating a point estimation, it works exactly the same way, 
-but avoids having to fun convolutions over the whole network for them just not to be used.
+# but avoids having to fun convolutions over the whole network for them just not to be used.
 
 inp = Input(shape=(243, 20))
 
@@ -90,10 +88,9 @@ model.compile(loss='mse', optimizer=optimizer, metrics = [tf.keras.metrics.RootM
 
 # code to run the above 
 
-
 filenames = ['N-CMAPSS_DS01.h5', 'N-CMAPSS_DS02.h5' , 'N-CMAPSS_DS03-012.h5', 'N-CMAPSS_DS04.h5', 'N-CMAPSS_DS05.h5', 'N-CMAPSS_DS06.h5', 'N-CMAPSS_DS07.h5', 'N-CMAPSS_DS08a-009.h5', 'N-CMAPSS_DS08c-008.h5']
 
-# Due to memory limitations I had tl run the following on my CPU, before training the model on my GPU
+# Due to memory limitations I had to run the following on my CPU, before training the model on my GPU
 
 with tf.device('/CPU:0'):
     X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units = loading_all_data(filenames)
@@ -110,8 +107,8 @@ with tf.device('/GPU:0'):
     
     history = model.fit(training, validation_data=(test), epochs=3)
     
- # plotting our loss graph
- plot_loss(history, 'Final TCN Model')
+    # plotting our loss graph
+plot_loss(history, 'Final TCN Model')
  
- # Evaluating the final models RMSE score
- evaluate(Y_test, model.predict(X_test_scaled))
+    # Evaluating the final models RMSE score
+evaluate(Y_test, model.predict(X_test_scaled))
