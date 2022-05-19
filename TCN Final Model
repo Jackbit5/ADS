@@ -10,9 +10,7 @@ from utils import *
 # tensorflow stuff - note to speed up the training for this model the GPU optimised version of Tensorflow has been used
 
 import tensorflow as tf
-from keras.layers import Dense, Input, BatchNormalization, SpatialDropout1D, Convolution1D, GlobalMaxPooling1D, Activation
-from keras import regularizers
-from tensorflow.keras.optimizers import Adam
+from keras.layers import Dense, Input, BatchNormalization, SpatialDropout1D, Convolution1D, GlobalMaxPooling1D, Activation, Dropout
 
 # dictating some parameters
 
@@ -33,7 +31,7 @@ x = Convolution1D(nb_filters, 1,  padding=padding, name='initial_conv_layer')(in
 
 # Block 1
 
-conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_1')(x)
+conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_1')(x)
 x = Activation('relu')(conv)
 x = BatchNormalization()(x)    
 x = SpatialDropout1D(dropout_rate)(x)
@@ -41,7 +39,7 @@ x = Convolution1D(nb_filters, 1, padding='same')(x)
 
 # Block 2
 
-conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_2')(x)
+conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_2')(x)
 x = Activation('relu')(conv)
 x = BatchNormalization()(x)    
 x = SpatialDropout1D(dropout_rate)(x)
@@ -49,7 +47,7 @@ x = Convolution1D(nb_filters, 1, padding='same')(x)
 
 # Block 3
 
-conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_3')(x)
+conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_3')(x)
 x = Activation('relu')(conv)
 x = BatchNormalization()(x)    
 x = SpatialDropout1D(dropout_rate)(x)
@@ -57,7 +55,7 @@ x = Convolution1D(nb_filters, 1, padding='same')(x)
 
 # Block 4
 
-conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_4')(x)
+conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_4')(x)
 x = Activation('relu')(conv)
 x = BatchNormalization()(x)    
 x = SpatialDropout1D(dropout_rate)(x)
@@ -65,7 +63,7 @@ x = Convolution1D(nb_filters, 1, padding='same')(x)
 
 # Block 5
 
-conv = Conv1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_5')(x)
+conv = Convolution1D(filters=nb_filters, kernel_size=kernel_size, strides=kernel_size, padding=padding, name='Res_block_5')(x)
 x = Activation('relu')(conv)
 x = BatchNormalization()(x)    
 x = SpatialDropout1D(dropout_rate)(x)

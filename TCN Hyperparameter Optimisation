@@ -1,11 +1,9 @@
-#from utils import *
-
 # This file contains all of the code for loading in the data
 
 import numpy as np
 import pandas as pd
 import h5py
-from sklearn import StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 # function for loading in the datasets with the h5py file types
 
@@ -88,7 +86,8 @@ def loading_all_data(filenames):
 
 import tensorflow as tf
 
-# time window creation function
+# time window creation function, this needs to be modified slightly to use the keras scikit learn wrapper, it cannot handle being training on tf.dataset objects
+
 def temporaliser(X, y, units, time_window):
     
     engines = units[0].unique()
@@ -103,17 +102,13 @@ def temporaliser(X, y, units, time_window):
     
     # converting the numpy arrays to tf datasets
     
-    first_X_dataset = tf.data.Dataset.from_tensor_slices(X[start:end, :])
-    first_y_dataset = tf.data.Dataset.from_tensor_slices(y[start:end, :])
+    X_dataset = tf.data.Dataset.from_tensor_slices(X[start:end, :])
+    y_dataset = tf.data.Dataset.from_tensor_slices(y[start:end, :])
     
-    first_temporalised = first_X_dataset.window(time_window, shift=1, drop_remainder=True)
+    first_temporalised = X_dataset.window(time_window, shift=1, drop_remainder=True)
     
-    first_batched = first_temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
-    
-    #y_tf = first_y_dataset
-    
-    full_combined_temporalised = tf.data.Dataset.zip((first_batched, first_y_dataset))
-    
+    X_batched = first_temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
+
     # Now we can run the rest of the engines in a for loop and then concatenate them with the first engine 
     
     for engs in engines[1:]:
@@ -127,17 +122,35 @@ def temporaliser(X, y, units, time_window):
         y_tf_array = tf.convert_to_tensor(y[start:end, :])
 
         X_dataset = tf.data.Dataset.from_tensor_slices(X_tf_array)
-        y_dataset = tf.data.Dataset.from_tensor_slices(y_tf_array)
+        additional_y_dataset = tf.data.Dataset.from_tensor_slices(y_tf_array)
     
         temporalised = X_dataset.window(time_window, shift=1, drop_remainder=True)
     
         batched = temporalised.flat_map(lambda x:x.batch(time_window, drop_remainder=True))
         
-        combined_temporalised = tf.data.Dataset.zip((batched, y_dataset))
+        X_batched = X_batched.concatenate(batched)
     
-        full_combined_temporalised = full_combined_temporalised.concatenate(combined_temporalised)
+        y_dataset = y_dataset.concatenate(additional_y_dataset)
+
+    # converting the tf datasets back into arrays, this is a very slow process which requires a fair amount of ram available as numpy arrays sit in your cpu cache
+
+    X_train_array = tf.TensorArray(dtype=X_batched.element_spec.dtype,
+                              size=0,
+                              dynamic_size=True,
+                              element_shape=X_batched.element_spec.shape)
+    X_train_array = X_batched.reduce(X_train_array, lambda a, t: a.write(a.size(), t))
+    tensor = tf.reshape(X_train_array.concat(), (-1,)+tuple(X_batched.element_spec.shape))
+    X_array = tf.Session().run(tensor)
+
+    y_train_array = tf.TensorArray(dtype=y_dataset.element_spec.dtype,
+                                size=0,
+                                dynamic_size=True,
+                                element_shape=y_dataset.element_spec.shape)
+    y_train_array = y_dataset.reduce(y_train_array, lambda a, t: a.write(a.size(), t))
+    tensor = tf.reshape(y_train_array.concat(), (-1,)+tuple(y_dataset.element_spec.shape))
+    y_array = tf.Session().run(tensor)
     
-    return full_combined_temporalised
+    return X_array, y_array
 
 import matplotlib.pyplot as plt
 
@@ -172,14 +185,14 @@ def evaluate(y_true, y_hat, label='test'):
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-from sklearn import StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 # tensorflow stuff
 
 import tensorflow as tf
-from keras.layers import Dense, Input, BatchNormalization, SpatialDropout1D, Convolution1D, GlobalMaxPooling1D, Activation, Dropout
-from keras import regularizers
-from keras import Model
+from tensorflow.keras.layers import Dense, Input, BatchNormalization, SpatialDropout1D, Convolution1D, GlobalMaxPooling1D, Activation, Dropout
+from tensorflow.keras import regularizers
+from tensorflow.keras import Model
 from tensorflow.keras.optimizers import Adam
 
 # imports needed for hyperparameter optimisation
@@ -266,35 +279,32 @@ def create_model(nb_filters, kernel_size, neurons, learning_rate, window_length,
     # Compile your model with your optimizer, loss, and metrics
     
     model = Model(inputs=inp, outputs=outp)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     model.compile(loss='mse', optimizer=opt, metrics = [tf.keras.metrics.RootMeanSquaredError()])
     
     return model
 
 # code to run the above 
 
-# To save time we only ran hyperparameter optimisation on two of the datasets
+# To save time we only ran hyperparameter optimisation on one of the datasets
+# to run this locally you will need to change these file paths to match where your dataset is saved
 
-filenames = ['N-CMAPSS_DS01.h5', 'N-CMAPSS_DS03-012.h5']
+filenames = ['C:/Users/jack.foster/iCloudDrive/Documents/MSC/Applying Data Science/Data/N-CMAPSS_DS01.h5']
 
 # this is our loading in function, creating our train test split, which is already scaled
 
 X_train_scaled, X_test_scaled, Y_dev, Y_test, train_units, test_units = loading_all_data(filenames)
 
-# this function converts the datasets to a tensorflow dataset object and produces the time windows
+# this function converts the datasets to a tensorflow dataset object and produces the time windows, then converts it back to numpy array
 
-training_ds_243 = temporaliser(X_train_scaled, Y_dev, train_units, 243)
-test_ds_243 = temporaliser(X_test_scaled, Y_test, test_units, 243)
+X_train, y_train = temporaliser(X_train_scaled, Y_dev, train_units, 243)
 
-training_ds_486 = temporaliser(X_train_scaled, Y_dev, train_units, 486)
-test_ds_486 = temporaliser(X_test_scaled, Y_test, test_units, 486)
-
-training = training_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
-test = test_ds.shuffle(100000).batch(20).prefetch(tf.data.AUTOTUNE)
-    
 model = KerasClassifier(build_fn = create_model, verbose=1)
 # Defining the paramters to be optimised over
 cv = KFold(n_splits=5)
+
+# Due to the difficulty of passing in two different datasets, we simply ran the radnomised search twice, 
+# manually changing the window length from 243 to 486
 
 params = {'nb_filters' : [64, 128],
           'kernel_size': [2, 3],
@@ -303,12 +313,12 @@ params = {'nb_filters' : [64, 128],
           'learning_rate': [0.01, 0.001], 
           'padding':['same'], 
           'epochs': [10],
-          'window_length' : [243, 486]}
+          'window_length' : [243]}
 
 # Create a randomize search cv object passing in the parameters to try
 random_search = RandomizedSearchCV(model, param_distributions = params, cv = cv, n_iter=60)
 
-random_search.fit(input_X_train, output_Y_train)
+random_search.fit(X_train, y_train)
               
 # summarize result
 print('Best Score: %s' % random_search.best_score_)
